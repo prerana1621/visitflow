@@ -1,0 +1,17 @@
+{
+  "name": "visitflow",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Grounded AI lead response and race-safe site visit booking demo",
+  "workspaces": ["client", "server"],
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev --workspace=@visitflow/server\" \"npm:dev --workspace=@visitflow/client\"",
+    "dev:server": "npm run dev --workspace=@visitflow/server",
+    "dev:client": "npm run dev --workspace=@visitflow/client",
+    "seed": "npm run seed --workspace=@visitflow/server",
+    "test": "npm test --workspace=@visitflow/server",
+    "smoke": "node server/scripts/smoke-check.js",
+    "build": "npm run build --workspace=@visitflow/client"
+  },
+  "devDependencies": { "concurrently": "^9.2.1" }
+}

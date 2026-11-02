@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import { normalisePhone, isValidPhone } from '../src/utils/phone.js';
+import { stripUnsafeClaims } from '../src/utils/aiSafety.js';
+
+assert.equal(normalisePhone('98765 43210'), '+919876543210');
+assert.equal(normalisePhone('+91 98765 43210'), '+919876543210');
+assert.equal(isValidPhone('12345'), false);
+assert.equal(isValidPhone('1234567890'), false);
+assert.equal(normalisePhone('0000000001'), '+910000000001');
+assert.equal(isValidPhone('0000000002'), false);
+assert.equal(stripUnsafeClaims('The portfolio-wide indicative range is INR 65 lakh to INR 1.2 crore.'), false);
+assert.equal(stripUnsafeClaims('Your 2 BHK will cost ₹78 lakh.'), true);
+assert.equal(stripUnsafeClaims('The portfolio range is INR 65 lakh to INR 1.2 crore. Your unit price is ₹78 lakh.'), true);
+assert.equal(stripUnsafeClaims('We can guarantee a 10% discount.'), true);
+assert.equal(stripUnsafeClaims('Possession is guaranteed.'), true);
+assert.equal(stripUnsafeClaims('कुल पोर्टफोलियो की सीमा 65 लाख से 1.2 करोड़ है।'), false);
+assert.equal(stripUnsafeClaims('કુલ પોર્ટફોલિયો રેન્જ 65 લાખથી 1.2 કરોડ છે.'), false);
+assert.equal(stripUnsafeClaims('This 2 BHK is priced at 78L.'), true);
+assert.equal(stripUnsafeClaims('10% ડિસ્કાઉન્ટ મળી શકે છે.'), true);
+assert.equal(stripUnsafeClaims('Possession की गारंटी है.'), true);
+console.log('VisitFlow dependency-free smoke checks passed (16 assertions).');

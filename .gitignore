@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.env
+.env.*
+!.env.example
+!**/.env.example
+coverage/
+.DS_Store
+*.log
+playwright-report/
+test-results/
+
+# Generated document render previews
+docs/tdd_render/
+docs/pdf_render/
