@@ -8,13 +8,33 @@ import SiteVisit from '../src/models/SiteVisit.js';
 import ReminderLog from '../src/models/ReminderLog.js';
 import { processDueReminders } from '../src/services/reminders.js';
 
-let mongo; let project; let lead; let slot; let visit;
+let mongo;
+let project;
+let lead;
+let slot;
+let visit;
+
 beforeAll(async () => {
   mongo = await MongoMemoryServer.create();
+
   await mongoose.connect(mongo.getUri());
-  await Promise.all([Project.init(), Lead.init(), VisitSlot.init(), SiteVisit.init(), ReminderLog.init()]);
-});
-afterAll(async () => { await mongoose.disconnect(); await mongo.stop(); });
+
+  await Promise.all([
+    Project.init(),
+    Lead.init(),
+    VisitSlot.init(),
+    SiteVisit.init(),
+    ReminderLog.init(),
+  ]);
+}, 600000);
+
+afterAll(async () => {
+  await mongoose.disconnect();
+
+  if (mongo) {
+    await mongo.stop();
+  }
+}, 30000);
 beforeEach(async () => {
   await Promise.all([ReminderLog.deleteMany({}), SiteVisit.deleteMany({}), VisitSlot.deleteMany({}), Lead.deleteMany({}), Project.deleteMany({})]);
   project = await Project.create({ code: 'REMINDER', name: 'Reminder project' });

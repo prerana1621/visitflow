@@ -79,19 +79,39 @@ export async function generateAssistantDecision({ message, project, history = []
   }));
   contents.push({ role: 'user', parts: [{ text: message }] });
 
-  const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  const model = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
     signal: AbortSignal.timeout(20000),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: systemInstruction }] },
       contents,
-      generationConfig: { responseFormat: { text: { mimeType: 'APPLICATION_JSON', schema: responseJsonSchema } } },
+
+      generationConfig: {
+        responseFormat: {
+          text: {
+            mimeType: "APPLICATION_JSON",
+            schema: responseJsonSchema,
+          },
+        },
+      },
     }),
   });
-  if (!response.ok) throw Object.assign(new Error('AI provider request failed'), { status: 503 });
+  if (!response.ok) {
+    const providerError = await response.text();
+
+    console.error(
+      `[gemini-error] HTTP ${response.status}:`,
+      providerError.slice(0, 1200),
+    );
+
+    throw Object.assign(
+      new Error(`Gemini API returned HTTP ${response.status}`),
+      { status: 503 },
+    );
+  }
   const payload = await response.json();
   const text = payload?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('');
   if (!text) throw Object.assign(new Error('AI provider returned no usable response'), { status: 503 });
@@ -117,7 +137,7 @@ export async function summariseLead({ lead, messages }) {
     return `Interested in ${lead.wants || 'a home'} at ${lead.project?.name || 'the selected project'}. Budget: ${lead.budgetMin || lead.budgetMax ? `${lead.budgetMin || 'not set'}-${lead.budgetMax || 'not set'}` : 'not confirmed'}. Timeline: ${lead.timeline || 'not confirmed'}. Recent enquiry: ${recent || 'No buyer message yet'}.`;
   }
   const prompt = `Summarise this real-estate enquiry in at most 65 words for a sales executive. Use only supplied fields and buyer messages. Never invent details. Lead: ${JSON.stringify({ name: lead.name, project: lead.project?.name, wants: lead.wants, budgetMin: lead.budgetMin, budgetMax: lead.budgetMax, timeline: lead.timeline })}. Buyer messages: ${messages.filter((m) => m.sender === 'buyer').slice(-8).map((m) => m.body).join('\n')}`;
-  const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  const model = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const response = await fetch(url, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY }, signal: AbortSignal.timeout(15000),

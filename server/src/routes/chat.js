@@ -24,6 +24,7 @@ router.post('/:leadId/messages', requireAuth, async (req, res) => {
   try {
     decision = await generateAssistantDecision({ message, project: lead.project, history: history.slice(0, -1), currentLead: lead });
   } catch (error) {
+    console.error("[chat-ai-fallback]", error);
     decision = { reply: "I can't verify that right now. I'll connect you with a sales executive rather than guess.", language: lead.language, intent: 'human_help', extractedFields: { configuration: lead.wants, budgetMin: lead.budgetMin, budgetMax: lead.budgetMax, timeline: lead.timeline }, requestedAction: 'HANDOFF', needsHuman: true, aiAvailable: false };
   }
 
