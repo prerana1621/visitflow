@@ -1,167 +1,530 @@
-# VisitFlow - local setup and deployment
+# VisitFlow - Deployment and Operations Guide
 
-## Prerequisites
+This document describes the local setup, deployment configuration, environment variables, verification results and operational limitations of VisitFlow.
 
-- Node.js 20.9 or newer (Node.js 22 is recommended).
+## 1. Deployment Overview
+
+VisitFlow uses a monorepo containing a Next.js frontend and an Express backend.
+
+The deployed architecture is:
+
+| Component | Platform | URL |
+|---|---|---|
+| Source repository | GitHub | https://github.com/prerana1621/visitflow |
+| Frontend | Vercel | https://visitflow-nu.vercel.app |
+| Backend | Render | https://visitflow-api.onrender.com |
+| Database | MongoDB Atlas | Database: `visitflow` |
+| AI provider | Google Gemini | Gemini 3.1 Flash Lite |
+
+The frontend communicates with the backend through a Next.js API rewrite. MongoDB credentials, JWT secrets and the Gemini API key remain server-side.
+
+## 2. Prerequisites
+
+- Node.js 20.9 or newer (Node.js 22 recommended).
 - npm 10 or newer.
-- Docker Desktop, or a MongoDB 7 instance / MongoDB Atlas database.
-- A Gemini API key for live AI chat. The application fails safely to a human-handoff message when the key is absent; it does not pretend the LLM is running.
+- MongoDB Atlas account or MongoDB 7.
+- Google Gemini API key.
+- GitHub account.
+- Render account.
+- Vercel account.
 
-## 1. Publish the prepared source repository
+## 3. Repository Setup
 
-The source is prepared as a local Git repository with its development commits preserved. Create an **empty public repository** on GitHub named `visitflow` (do not initialise it with a README, licence or `.gitignore`), then run this from the project folder:
-
-```bash
-git remote add origin https://github.com/<YOUR_GITHUB_USERNAME>/visitflow.git
-git push -u origin main
-```
-
-Replace `<YOUR_GITHUB_USERNAME>` with your GitHub username. After pushing, replace the repository placeholder in this guide and in the TDD with the real public URL. Keep the repository public through the review period.
-
-The root package uses npm workspaces for `client` and `server`.
-
-## 2. Start MongoDB
-
-For a local Docker database:
+Clone the repository:
 
 ```bash
-docker compose up -d mongodb
+git clone https://github.com/prerana1621/visitflow.git
+cd visitflow
 ```
 
-This starts MongoDB at `mongodb://127.0.0.1:27017/visitflow`.
-
-## 3. Configure environment variables
-
-Copy the example files:
+Install dependencies from the repository root:
 
 ```bash
-cp server/.env.example server/.env
-cp client/.env.example client/.env.local
+npm install
 ```
 
-On Windows PowerShell:
+The repository uses npm workspaces:
+
+- `client`: Next.js frontend.
+- `server`: Express backend.
+
+## 4. Environment Configuration
+
+### 4.1 Backend Environment
+
+Copy the server example file.
+
+**Windows PowerShell:**
 
 ```powershell
 Copy-Item server/.env.example server/.env
+```
+
+**macOS / Linux:**
+
+```bash
+cp server/.env.example server/.env
+```
+
+Configure the following variables in `server/.env`:
+
+| Variable | Purpose |
+|---|---|
+| `NODE_ENV` | Application environment. Use `development` locally and `production` on Render. |
+| `PORT` | Express port. Render supplies the production port automatically. |
+| `MONGODB_URI` | MongoDB Atlas connection string. |
+| `JWT_SECRET` | Random secret of at least 32 characters. |
+| `JWT_EXPIRES_IN` | JWT session lifetime. |
+| `GEMINI_API_KEY` | Server-side Gemini API key. |
+| `GEMINI_MODEL` | Gemini model identifier. |
+| `OTP_DEV_CODE` | Fixed OTP for the synthetic reviewer demo. |
+| `ALLOW_DEMO_OTP` | Controls demo OTP authentication. |
+| `REMINDER_TIMEZONE` | Timezone used by the reminder scheduler. |
+| `CLIENT_ORIGIN` | Frontend origin permitted by backend CORS. |
+
+Recommended local configuration:
+
+```env
+NODE_ENV=development
+PORT=5000
+MONGODB_URI=mongodb://127.0.0.1:27017/visitflow
+JWT_SECRET=replace-with-a-long-random-secret-at-least-32-characters
+JWT_EXPIRES_IN=8h
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-3.1-flash-lite
+OTP_DEV_CODE=246810
+ALLOW_DEMO_OTP=false
+REMINDER_TIMEZONE=Asia/Kolkata
+CLIENT_ORIGIN=http://localhost:3000
+```
+
+Generate a secure JWT secret using Node.js:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
+
+Do not commit real secrets or environment files to GitHub.
+
+### 4.2 Frontend Environment
+
+Copy the client example file.
+
+**Windows PowerShell:**
+
+```powershell
 Copy-Item client/.env.example client/.env.local
 ```
 
-Set the server values in `server/.env`:
+**macOS / Linux:**
 
-| Variable | Purpose |
-|---|---|
-| `NODE_ENV` | `development` locally; `production` on the hosted API |
-| `PORT` | Express port; defaults to `5000` |
-| `MONGODB_URI` | MongoDB connection string |
-| `JWT_SECRET` | Random secret of at least 32 characters; generate a unique value |
-| `JWT_EXPIRES_IN` | Session lifetime; defaults to `8h` |
-| `GEMINI_API_KEY` | Gemini API key; keep this server-side only |
-| `GEMINI_MODEL` | Gemini model identifier; default `gemini-3.8-flash` |
-| `OTP_DEV_CODE` | Fixed OTP used only by the synthetic demo |
-| `ALLOW_DEMO_OTP` | Must remain `false` by default; set `true` only for an isolated, synthetic-data reviewer deployment |
-| `REMINDER_TIMEZONE` | Reminder scheduler timezone; default `Asia/Kolkata` |
-| `CLIENT_ORIGIN` | Frontend origin permitted by backend CORS |
+```bash
+cp client/.env.example client/.env.local
+```
 
-Set the client values in `client/.env.local`:
+Configure:
 
-| Variable | Purpose |
-|---|---|
-| `API_BASE_URL` | Express API base URL used by the Next.js rewrite; local value is `http://localhost:5000` |
-| `NEXT_PUBLIC_APP_NAME` | Display name; defaults to `VisitFlow` |
+```env
+API_BASE_URL=http://localhost:5000
+NEXT_PUBLIC_APP_NAME=VisitFlow
+```
 
-Never commit `.env`, `.env.local`, API keys, JWT secrets, database credentials or real buyer data.
+`API_BASE_URL` is used by `client/next.config.mjs` to configure the `/api/*` rewrite.
 
-## 4. Seed the demo database
+## 5. Database Configuration
 
-Run from the repository root:
+VisitFlow uses MongoDB Atlas with Mongoose.
+
+The configured database name is:
+
+```text
+visitflow
+```
+
+Set the complete Atlas connection string in the backend's `MONGODB_URI` environment variable.
+
+The connection string must remain private. Do not place it in the frontend environment or commit it to the repository.
+
+### Network access
+
+MongoDB Atlas requires network access for the backend host.
+
+During the current demonstration deployment, the Atlas IP access list uses:
+
+```text
+0.0.0.0/0
+```
+
+This permits connection attempts from any IP address, although database authentication is still required.
+
+This is a broad network-access rule and is not recommended for production. Before production use, restrict access to trusted Render outbound IP ranges or use an appropriate private networking configuration. Retain local development access only where necessary.
+
+Use a database user with the minimum privileges required by the application.
+
+## 6. Seed the Demo Database
+
+The repeatable seed command is:
 
 ```bash
 npm run seed
 ```
 
-The seed script is repeatable and creates the two sample projects, the three sample leads from the brief, conversation history, two historical visit records, future bookable slots and demo users. It does not send messages to real numbers.
+It creates or updates:
 
-The sample phone values are synthetic placeholders and must never be used for real calls or messaging.
+- Demo buyer, sales and admin users.
+- Two sample projects.
+- Synthetic sample leads.
+- Conversation history.
+- Historical visit records.
+- Future visit slots.
 
-## 5. Run locally
+The script uses synthetic sample contact details and does not send real messages.
 
-In one terminal, from the repository root:
+**Important:** The seed script modifies seeded records. Run it only against a database intended for the demonstration. Do not run it against an existing production customer database.
+
+## 7. Local Execution
+
+Start both applications from the repository root:
 
 ```bash
 npm run dev
 ```
 
-Open `http://localhost:3000`. The Next.js app proxies `/api/*` to the Express service on port `5000`.
+The local services are:
 
-Useful checks:
+| Service | Address |
+|---|---|
+| Next.js frontend | http://localhost:3000 |
+| Express backend | http://localhost:5000 |
+| API health check | http://localhost:5000/api/health |
+
+The backend health endpoint returns a JSON response containing:
+
+- `status`
+- `service`
+- `timestamp`
+
+Example:
+
+```json
+{
+  "status": "ok",
+  "service": "visitflow-api",
+  "timestamp": "..."
+}
+```
+
+## 8. Backend Deployment - Render
+
+### 8.1 Service Configuration
+
+The Express backend is deployed as a Render Web Service.
+
+| Setting | Value |
+|---|---|
+| Repository | `prerana1621/visitflow` |
+| Branch | `main` |
+| Runtime | Node |
+| Root Directory | Repository root |
+| Build Command | `npm install` |
+| Start Command | `npm run start --workspace=@visitflow/server` |
+| Health Check Path | `/api/health` |
+
+The backend listens on the port supplied by Render, falling back to port 5000 for local execution.
+
+### 8.2 Render Environment Variables
+
+Configure the following variables in the Render service's Environment section:
+
+| Key | Value / Configuration |
+|---|---|
+| `NODE_ENV` | `production` |
+| `MONGODB_URI` | Complete MongoDB Atlas connection string |
+| `JWT_SECRET` | Newly generated, unique secret |
+| `JWT_EXPIRES_IN` | `8h` |
+| `GEMINI_API_KEY` | Valid Gemini API key |
+| `GEMINI_MODEL` | `gemini-3.1-flash-lite` |
+| `OTP_DEV_CODE` | `246810` |
+| `ALLOW_DEMO_OTP` | `true` for the isolated synthetic reviewer demo only |
+| `REMINDER_TIMEZONE` | `Asia/Kolkata` |
+| `CLIENT_ORIGIN` | `https://visitflow-nu.vercel.app` |
+
+Do not add MongoDB credentials, Gemini keys or JWT secrets to the Vercel project.
+
+Render provides the `PORT` environment variable automatically.
+
+### 8.3 Health Verification
+
+The deployed API health endpoint is:
+
+https://visitflow-api.onrender.com/api/health
+
+The endpoint was checked after deployment and returned the expected healthy service response.
+
+## 9. Frontend Deployment - Vercel
+
+### 9.1 Project Configuration
+
+The Next.js frontend is deployed through Vercel using the GitHub repository.
+
+| Setting | Value |
+|---|---|
+| Repository | `prerana1621/visitflow` |
+| Branch | `main` |
+| Framework | Next.js |
+| Root Directory | `client` |
+| Build Command | `next build` |
+| Output Directory | Default Next.js output |
+
+The repository uses npm workspaces and a root-level package lockfile. Vercel must be configured to include the required workspace files outside the client directory when using the `client` root.
+
+### 9.2 Vercel Environment Variables
+
+Add the following variables in Vercel:
+
+| Key | Value |
+|---|---|
+| `API_BASE_URL` | `https://visitflow-api.onrender.com` |
+| `NEXT_PUBLIC_APP_NAME` | `VisitFlow` |
+
+Do not append `/api` to `API_BASE_URL`. The Next.js rewrite adds the API path automatically.
+
+The deployed frontend URL is:
+
+https://visitflow-nu.vercel.app
+
+After changing environment variables in Vercel, trigger a new deployment so the build uses the updated values.
+
+### 9.3 Frontend and Backend Connection
+
+The Next.js configuration uses:
+
+```javascript
+const apiBase = process.env.API_BASE_URL || 'http://localhost:5000';
+```
+
+It rewrites:
+
+```text
+/api/:path*
+```
+
+to:
+
+```text
+${API_BASE_URL}/api/:path*
+```
+
+The Render backend uses `CLIENT_ORIGIN` to permit the deployed frontend origin through CORS.
+
+The frontend and backend should use HTTPS in the hosted environment.
+
+## 10. Demo Authentication
+
+The application uses synthetic demonstration accounts.
+
+### Buyer
+
+| Field | Value |
+|---|---|
+| Phone | `0000000001` |
+| OTP | `246810` |
+
+### Sales Executive
+
+| Field | Value |
+|---|---|
+| Email | `sales@visitflow.demo` |
+| Password | `Demo@123!` |
+
+### Admin
+
+| Field | Value |
+|---|---|
+| Email | `admin@visitflow.demo` |
+| Password | `Demo@123!` |
+
+The production demo OTP restriction permits the fixed demo code only for the synthetic reviewer buyer phone number:
+
+```text
++910000000001
+```
+
+Other phone numbers are rejected when production demo OTP mode is enabled.
+
+The demo OTP is intentionally simulated. No SMS provider is connected, and the demo code is not suitable for real customer authentication.
+
+The sales and admin credentials are also shared synthetic demonstration credentials. They must not be reused in a real deployment or used to protect real customer information.
+
+### Production authentication requirement
+
+Before accepting real buyers:
+
+- Integrate a verified OTP provider.
+- Disable demo OTP mode using `ALLOW_DEMO_OTP=false`.
+- Configure OTP expiry, attempt limits and abuse protection.
+- Remove fixed demo-code disclosure.
+- Verify buyer phone ownership.
+
+With demo OTP disabled, the current OTP request endpoint deliberately returns HTTP 503 until a verified OTP provider is integrated.
+
+## 11. Application Verification
+
+The following local verification was completed before deployment.
+
+### 11.1 Backend Automated Tests
+
+Command:
 
 ```bash
-curl http://localhost:5000/api/health
 npm test
+```
+
+Result:
+
+```text
+Test Files  4 passed (4)
+Tests       13 passed (13)
+```
+
+### 11.2 Dependency Security Audit
+
+Command:
+
+```bash
+npm audit
+```
+
+Result:
+
+```text
+found 0 vulnerabilities
+```
+
+### 11.3 Smoke Tests
+
+Command:
+
+```bash
+npm run smoke
+```
+
+Result:
+
+```text
+VisitFlow dependency-free smoke checks passed (16 assertions).
+```
+
+### 11.4 Frontend Production Build
+
+Command:
+
+```bash
 npm run build
 ```
 
-## 6. Demo sign-in
+Result:
 
-**Buyer (mock OTP)**
+- Next.js compilation successful.
+- TypeScript checks successful.
+- Page-data collection successful.
+- Static page generation successful.
+- Nine application routes generated.
 
-- Mobile: `0000000001`
-- Demo OTP: `246810`
-- Sign-in flow: choose **I'm exploring**, request the demo OTP, then verify it.
+### 11.5 Manual Functional Checks
 
-**Sales executive**
+The following workflows were manually verified during local testing:
 
-- Email: `sales@visitflow.demo`
-- Password: `Demo@123!`
+- Buyer OTP login.
+- AI-powered buyer conversation.
+- Requirement extraction and human handoff behaviour.
+- Site-visit booking.
+- Concurrent booking protection.
+- Buyer ownership validation.
+- Booking cancellation.
+- Slot capacity release after cancellation.
+- Reminder idempotency.
+- Reminder suppression for opted-out buyers.
 
-**Sales head / admin**
+The deployed backend health endpoint was also checked.
 
-- Email: `admin@visitflow.demo`
-- Password: `Demo@123!`
+## 12. Operational Limitations
 
-The buyer number and all seeded contact details are deliberately synthetic. OTP generation is simulated and no SMS is sent. A production deployment must integrate a verified OTP provider before accepting real buyer data. For an isolated reviewer environment only, `ALLOW_DEMO_OTP=true` allows the demo code to be used while `NODE_ENV=production`; do not enable this setting for a real customer deployment.
+### 12.1 Reminder Scheduling
 
-## 7. Main demo walkthrough
+The reminder worker uses `node-cron` and runs inside the Express backend process.
 
-1. Sign in as the buyer and start a new enquiry. Tick the consent checkbox.
-2. Ask a question using one of the three supported languages.
-3. Ask to arrange a site visit. With a Gemini API key configured, the model returns a structured action and the backend checks the live free-slot collection. Without a key, the assistant explicitly hands the enquiry to a person.
-4. Choose a displayed slot. The API checks capacity again and atomically reserves the slot; refreshing stale availability cannot create a double booking.
-5. Sign in as the sales executive. Review the lead, the stored conversation and the AI summary; change status or reassign it.
-6. Sign in as the admin to edit the fact sheet or create more visit slots.
-7. Check the sales dashboard for source and visit metrics. Cost per visit remains unavailable until source-wise ad spend is configured.
+This is appropriate for a single-instance demonstration deployment.
 
-## 8. Production deployment outline
+If the Render instance sleeps or becomes unavailable, scheduled reminders may be delayed or missed. A free hosting instance that sleeps after inactivity should not be treated as a reliable reminder-processing service.
 
-### Database
+A production deployment should use:
 
-Create a MongoDB Atlas database and configure network access for the backend host. Use a least-privilege database user and a TLS connection string in `MONGODB_URI`.
+- An always-on worker or managed scheduler.
+- A durable queue/outbox.
+- Distributed locking.
+- Retry and failure handling.
+- Delivery callbacks and monitoring.
 
-### Backend
+### 12.2 Communication Providers
 
-Deploy `server` as a persistent Node.js web service (for example, Render or an equivalent host). Use:
+WhatsApp and SMS delivery are simulated.
 
-- Build/install command: `npm install`
-- Start command: `npm run start --workspace=@visitflow/server`
-- Root directory: repository root
-- Environment variables: all server variables listed above
+No real WhatsApp Business, SMS or external messaging provider is integrated.
 
-The reminder scheduler runs inside the API process. Keep at least one API instance running continuously; scale-out deployments need a distributed scheduler/lock so multiple instances do not process the same reminders. Current reminder writes have a unique `(visit, type)` index to prevent duplicate log creation.
+### 12.3 Property Information
 
-### Frontend
+Project details are limited to the information supplied in the assignment brief.
 
-Deploy `client` to Vercel or another Next.js host. Set the project root to `client` only if the platform is configured to install from the monorepo root; otherwise use the root workspace and the Next.js build command. Set `API_BASE_URL` to the deployed Express API URL at build time so the Next.js rewrite can proxy `/api/*` on the same origin. Confirm cookies are forwarded through the rewrite and use HTTPS.
+Unverified amenities, addresses, RERA registration numbers, possession dates and exact unit quotations are not invented.
 
-### Production gates before real users
+### 12.4 Booking Consistency
 
-- Integrate OTP delivery and abuse controls; do not use the fixed demo OTP.
-- Integrate approved WhatsApp/SMS templates and provider delivery callbacks; current messages are simulated only.
-- Add verified RERA registration numbers and verified project addresses before enabling promotional content or map pins.
-- Complete a DPDP review, retention/deletion policy, consent evidence, processor contracts and incident-response procedures.
-- Add audit history for fact-sheet changes, role changes and lead access; current access control is role-based but not a full compliance audit log.
-- Add a distributed scheduler/lock for multiple backend instances, and monitoring for failed reminders and AI-provider errors.
-- Have the sales head review AI responses and false handoff flags. AI summaries are assistive, not authoritative.
+Booking capacity is protected through atomic slot updates and unique indexes, with compensating rollback when subsequent operations fail.
 
-## 9. Current deployment status
+A multi-document MongoDB transaction or durable reservation-hold workflow may be considered for a larger production system.
 
-The project source and local Git history are prepared. Publication and hosting are not complete yet: push the repository using Section 1, then replace `<PUBLIC_GITHUB_REPOSITORY_URL>` in this file and the TDD with the real public URL. Deploy the frontend and API using Section 8 and add the live URL after verifying the deployed demo. Do not represent a local URL as a public demo link.
+## 13. Production Readiness Improvements
+
+Before using VisitFlow with real customers, the following improvements are recommended:
+
+1. Integrate a verified OTP provider and remove fixed demo authentication.
+2. Integrate approved WhatsApp/SMS templates and delivery callbacks.
+3. Verify project addresses, RERA registration information and property details.
+4. Add distributed reminder scheduling and failure recovery.
+5. Add audit logs for sensitive administrative and lead-management actions.
+6. Implement retention, deletion and consent-evidence workflows.
+7. Add application monitoring, alerting, backups and incident response.
+8. Complete the applicable privacy and regulatory compliance reviews.
+9. Review database network access and restrict it to trusted services.
+10. Replace shared synthetic demo credentials before any real customer deployment.
+
+## 14. Current Deployment Status
+
+The VisitFlow source repository is published on GitHub, and both the frontend and backend have been deployed.
+
+| Component | Current status |
+|---|---|
+| GitHub source repository | Published |
+| Render backend | Deployed |
+| Backend health endpoint | Verified |
+| Vercel frontend | Deployed |
+| MongoDB Atlas connection | Configured |
+| Gemini integration | Configured |
+| Backend automated tests | 13/13 passed locally |
+| Security audit | 0 reported vulnerabilities |
+| Smoke tests | 16/16 assertions passed |
+| Frontend production build | Successful |
+
+### Final Links
+
+- GitHub: https://github.com/prerana1621/visitflow
+- Frontend: https://visitflow-nu.vercel.app
+- Backend: https://visitflow-api.onrender.com
+- Health Check: https://visitflow-api.onrender.com/api/health
+
+---
+
+**VisitFlow - AI Lead Response & Site-Visit Booking Assistant**
+
+Technical demonstration developed for the selected real-estate developer assignment brief.
